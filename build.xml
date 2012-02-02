@@ -1,0 +1,180 @@
+<?xml version="1.0"?>
+<project name="MyProject" default="buildDEV" basedir="./">
+    
+    <property file="${basedir}/build/build.properties"/>
+    <property file="${basedir}/build/remote.properties"/>
+	
+	<!-- Loads external macrodefs -->
+	<import file="${dir.build}/macro.xml" />
+	
+	
+	
+	
+	<target name="publishDEV">
+		 <echo message="This task will build and then upload the files on the DEV server..."/>
+		 <antcall target="buildDEV" />
+		 <antcall target="uploadDEV" />
+	</target>
+	
+	<target name="publishSTAGING">
+		 <echo message="This task will build and then upload the files on the STAGING server..."/>
+		 <antcall target="buildSTAGING" />
+		 <antcall target="uploadSTAGING" />
+	</target>
+
+
+
+
+	<target name="buildDEV"> 
+		<echo message="Building a DEV Environment..."/>
+		<property name="siteurl" value="${dev.siteurl}" />
+		<property name="fileslocation" value="${dev.fileslocation}" />
+		<antcall target="-build" />
+	</target>
+	
+	<target name="buildSTAGING"> 
+		<echo message="Building a STAGING Environment..."/>	
+		<property name="siteurl" value="${staging.siteurl}" />
+		<property name="fileslocation" value="${staging.fileslocation}" />
+		<antcall target="-build" />
+	</target>
+
+	
+	<target name="-build">
+		<antcall target="jslint" />
+		<antcall target="-clean" />
+		<antcall target="-mkdirs" />
+		<antcall target="-copy" />
+		<antcall target="-configure" />
+		<antcall target="-minifyJS" />
+		
+		<antcall target="-minifyCSS" />
+		<antcall target="-minifyHTML" />
+		<antcall target="-cleanup" />
+	</target>
+	
+	
+	<target name="-configure">
+		<echo message="Updating the config file to reflect the environment settings..." />
+		
+		<configureBuild 
+			buildfile="${dir.publish}/include/config.php" 
+			usecache="false" 
+			siteurl="${siteurl}"
+			fileslocation="${fileslocation}"
+		/>
+	</target>
+	
+	<target name="uploadDEV">
+        <echo message="Uploading files to the server using scp..."/>
+        <uploadDir dir="${dir.publish}" todir="." env="dev" />
+	</target>
+	
+	<target name="uploadSTAGING">
+        <echo message="Uploading files to the server using scp..."/>
+        <uploadDir dir="${dir.publish}" todir="." env="staging" />
+	</target>
+	
+	
+	<!-- removes build directories BEFORE the build -->
+	<target name="-clean">
+		<echo message="Removing previous directories..." />
+        <delete dir="${dir.publish}/"/>
+        <delete dir="${dir.temp}/"/>
+	</target>
+	
+	<!-- removes temps directory AFTER the build -->
+	<target name="-cleanup">
+		<echo message="Removing temp directory..." />
+        <delete dir="${dir.temp}/"/>
+	</target>
+	
+	
+	<!-- creates build directories -->
+	<target name="-mkdirs">
+		<echo message="Creating publish directory..." />
+        <mkdir dir="${dir.publish}"/>
+        <mkdir dir="${dir.temp}/"/>
+	</target>
+	
+	
+	<!-- copy the code into the publish directory to operate on the code -->
+	<target name="-copy">
+		<echo message="Copying the source files to the publish directory..." />
+		<copy todir="${dir.publish}" includeEmptyDirs="false">
+			<fileset dir="${dir.source}/" excludes="${file.default.exclude}, ${file.exclude}, _build/**, temp/**, test/**" />
+        </copy>
+         
+        <copy todir="${dir.temp}" includeEmptyDirs="false">
+			<fileset dir="${dir.source}/" excludes="${file.default.exclude}, ${file.exclude}, _build/**, temp/**, test/**" />
+        </copy>
+        
+	</target>
+	
+	<target name="-minifyJS">
+		<echo message="Minifying JS files..." />
+		<replaceregexp match="(console.log\(.*\);)" replace="\/\*\1\*/" flags="g" > 
+			<fileset dir="${dir.temp}/js">
+				<include name="**/*.js"/>
+				<exclude name="**/*.min.js"/>
+				<exclude name="**/${files.exclude.jslint}"/>
+				
+			</fileset>
+		</replaceregexp>
+		
+		<minifyJS fromdir="${dir.temp}/js" todir="${dir.publish}/js" /> 
+		<minifyJS fromdir="${dir.temp}/js/scripts" todir="${dir.publish}/js/scripts" /> 
+		<minifyJS fromdir="${dir.temp}/js/libs" todir="${dir.publish}/js/libs" />
+		
+	</target>
+	
+	<target name="-minifyCSS">
+		<echo message="Minifying CSS files..." />
+		<minifyCSS fromdir="${dir.source}/css" todir="${dir.publish}/css" /> 
+	</target>
+	
+    <target name="-minifyHTML">
+    	<echo message="Minifying HTML files..." />        
+        <minifyHTML fromdir="${dir.source}/pages" todir="${dir.publish}/pages" includes="*.html" />
+     </target>
+    
+    
+
+	
+	
+	<target name="jslint">
+	  	<apply executable="java" parallel="false">
+       	 	<fileset dir="${dir.source}/${dir.js}">
+       	 		<include name="*.js"/>
+       	 		<exclude name="*.min.js"/>
+       	 		<exclude name="${files.exclude.jslint}"/>
+       	 		
+       		</fileset> 
+       		<arg value="-jar" />
+       		<arg path="${dir.build.tools}/${tool.rhino}" />
+       		<arg path="${dir.build.tools}/${tool.jslint}" />
+       		<srcfile/>
+       		<arg value="${tool.jslint.opts}" />
+       	</apply>        
+		<echo>JSLint Successful</echo>
+    </target>
+    
+    
+	
+ 	<target name="csslint">
+        <apply executable="java" parallel="false" failonerror="true">
+            <fileset dir="${dir.source}/${dir.css}">
+                <include name="*.css"/>
+                <exclude name="**/*.min.css"/>
+                <exclude name="${files.exclude.csslint}"/>
+            </fileset> 
+            <arg value="-jar" />
+            <arg path="${dir.build.tools}/${tool.rhino}" />
+            <arg path="${dir.build.tools}/${tool.csslint}" />
+            <srcfile/>
+            <arg value="${tool.csslint.opts}" />
+        </apply>
+        <echo>CSSLint Successful</echo>
+    </target>
+</project>
+

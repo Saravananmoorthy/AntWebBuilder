@@ -1,0 +1,13 @@
+As its name suggests it, this project is manly an Ant script that will provide you with some processes and tools to build an deploy your web project.
+
+Following tasks are available: 
+- configure
+- minifyJS
+- minifyCSS
+- minifyHTML
+- jslint
+- csslint
+- upload
+- zip
+
+It is inspired by the Ant script found in HTML5 boilerplate.

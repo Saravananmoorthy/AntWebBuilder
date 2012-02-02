@@ -1,0 +1,225 @@
+<project>
+	<!--
+	This file holds several sequences (macrodef) to define standard procedures in the build.xml
+	-->
+	
+	<!-- load Ant Contribt -->
+	<taskdef resource="net/sf/antcontrib/antlib.xml">
+        <classpath>
+        	<pathelement location="${dir.build}/tools/ant-contrib-1.0b3.jar"/>
+        </classpath>
+    </taskdef>
+    
+    <!-- load yuicompressor -->
+	<path id="task.classpath">
+		<pathelement location="${dir.build}/tools/yuicompressor-2.4.5.jar" />
+		<pathelement location="${dir.build}/tools/yui-compressor-ant-task-0.5.jar" />
+	</path>
+	    
+	<taskdef name="yui-compressor" classname="net.noha.tools.ant.yuicompressor.tasks.YuiCompressorTask" >
+  		<classpath refid="task.classpath" />
+	</taskdef>
+	
+	<!-- load scp -->
+	<path id="jsch.path">
+	    <pathelement location="${dir.build}/tools/ant-jsch.jar" />
+	    <pathelement location="${dir.build}/tools/jsch-0.1.45.jar" />
+	</path>
+	
+	<taskdef name="scp" classname="org.apache.tools.ant.taskdefs.optional.ssh.Scp" classpathref="jsch.path" />
+	
+	
+	<macrodef name="configureBuild">
+		<attribute name="buildfile"/>
+		<attribute name="usecache" />
+		<attribute name="siteurl" />
+		<attribute name="fileslocation" />
+		
+		<sequential>
+			
+			<echo message="Config file: @{buildfile}" />			
+
+			<replaceregexp byline="true" file="@{buildfile}" 
+				match="'USECACHE', '([a-z]*)'\)"
+				replace="'USECACHE', '@{usecache}')" />
+			
+			<replaceregexp byline="true" file="@{buildfile}" 
+				match="'SITE_URL', '(.*)'\)"
+				replace="'SITE_URL', '@{siteurl}')" />
+				
+			<replaceregexp byline="true" file="@{buildfile}" 
+				match="'FILES_LOCATION', '(.*)'\)"
+				replace="'FILES_LOCATION', '@{fileslocation}')" />
+
+		</sequential>
+	</macrodef>
+	
+	
+	
+	<macrodef name="minifyCSS">
+		<attribute name="fromdir" />
+		<attribute name="todir"/>
+		<attribute name="includes" default="*.css"/>
+		<attribute name="excludes" default="*.min.css"/>
+		<attribute name="suffix" default=".css"/>
+		<sequential>
+			<minify fromdir="@{fromdir}" todir="@{todir}" includes="@{includes}" excludes="@{excludes}" suffix="@{suffix}" />	
+		</sequential>
+	</macrodef>
+	
+	<macrodef name="minifyJS">
+		<attribute name="fromdir" />
+		<attribute name="todir"/>
+		<attribute name="includes" default="*.js"/>
+		<attribute name="excludes" default="*.min.js"/>
+		<attribute name="suffix" default=".js"/>
+		<sequential>
+			<minify fromdir="@{fromdir}" todir="@{todir}" includes="@{includes}" excludes="@{excludes}" suffix="@{suffix}" />	
+		</sequential>
+	</macrodef>
+	
+	
+	<macrodef name="minify">
+		<attribute name="fromdir" />
+		<attribute name="todir" />
+		<attribute name="includes" />
+		<attribute name="excludes" />
+		<attribute name="suffix" />
+		<sequential>
+			<delete>
+				<fileset dir="@{todir}" includes="@{includes}" excludes="@{excludes}" />
+			</delete>
+			
+			<yui-compressor warn="false" optimize="true" jsSuffix="@{suffix}" cssSuffix="@{suffix}" munge="true" preserveallsemicolons="true" 
+							fromdir="@{fromdir}" todir="@{todir}">
+				<include name="@{includes}" />
+				<include name="@{excludes}" />
+			
+			</yui-compressor>
+			
+		</sequential>
+	</macrodef>
+	
+	<macrodef name="minifyHTML">
+		<attribute name="fromdir" />
+		<attribute name="todir" />
+		<attribute name="includes" />
+		<attribute name="excludes" default=""/>
+		
+		<sequential>		
+			<delete>
+				<fileset dir="@{todir}" includes="@{includes}" excludes="@{excludes}" />
+			</delete>
+			
+			<!-- http://code.google.com/p/htmlcompressor/wiki/Documentation -->			
+			<apply executable="java" parallel="false" >
+        
+	            <fileset dir="@{fromdir}">
+	            	<include name="@{includes}" />
+					<include name="@{excludes}" />
+				   	<exclude name="${files.exclude.htmlminify}"/>
+	            </fileset>
+	            
+	            <arg value="-jar"/>
+	            <arg path="${dir.build.tools}/${tool.htmlcompressor}"/>
+	            <!-- <arg line="remove-quotes"/> -->
+	            <arg line="--compress-js"/>
+	            <arg line="--compress-css"/>
+	            <arg line="--preserve-php"/>
+	            <srcfile/>
+	            <arg value="-o"/>
+	            <mapper type="glob" from="*" to="@{todir}/*"/>
+	            <targetfile/>
+	        </apply>
+        
+        </sequential>
+    </macrodef>
+
+	
+	<!--
+	Zips a directory
+	Parameters:
+		@{targetdir} 	=> directory to zip
+	Optional parameters:
+		@{destfile} 	=> zip file name
+		@{timestamp} 	=> timestamp to apply at the end of the file
+	-->
+	<macrodef name="zipFiles">
+		<attribute name="targetdir" />
+		<attribute name="destfile" default="${exportname}"/>
+		<attribute name="timestamp" default="MMddyyyy"/>
+
+		<sequential>
+			<set.timestamp pattern="@{timestamp}" />
+			<echo message="timestamp: ${timestamp}" />
+			<if>
+	            <equals arg1="${timestamp}" arg2="" />
+	            <then> <property name="fileSuffix" value="" /> </then>
+				<else> <property name="fileSuffix" value="_${timestamp}" /> </else>
+	        </if>
+			
+			
+			<zip basedir="@{targetdir}" destfile="@{destfile}${fileSuffix}.zip"/>
+			<echo message="Zip file successfully created : @{destfile}${fileSuffix}.zip" />
+		</sequential>
+	</macrodef>
+
+	
+	
+	<!--
+	Uploads a SINGLE FILE
+	Parameters:
+		@{file} 	=> file to upload
+		@{todir}	=> remote folder to copy the files in (httpdocs is already in the path)
+	Optional parameters:
+		@{env} => dev|staging
+		@{verbose} => show logs
+	-->
+	<macrodef name="uploadFile">
+		<attribute name="todir" />
+		<attribute name="file" />
+		<attribute name="env" default="dev" />
+		<attribute name="verbose" default="true" />
+		<sequential>
+			<echo message="uploading @{file} to ${remote-@{env}.user}@${remote-@{env}.hostname}:httpdocs/@{todir}" />
+			<sequential>
+				<scp file="@{file}" todir="${remote-@{env}.user}:${remote-@{env}.password}@${remote-@{env}.hostname}:httpdocs/@{todir}" verbose="@{verbose}" />
+			</sequential>
+		</sequential>	  	
+	</macrodef>
+	
+	
+	
+	<!--
+	Uploads multiples files located in a directory
+	Parameters:
+		@{dir}		=> local directory where the files are located
+		@{todir}	=> remote folder to copy the files in (httpdocs is already in the path)
+	Optional parameters:
+		@{env} => dev|staging
+		@{include}	=> pattern for files inclusiong
+		@{exclude}	=> pattern for files exclusion
+		@{verbose} => show logs
+	-->
+	<macrodef name="uploadDir">
+		<attribute name="dir" />
+		<attribute name="todir" />
+		<attribute name="env" default="dev" />
+		<attribute name="include" default="**" />
+		<attribute name="exclude" default="" />
+		<attribute name="verbose" default="true" />
+		
+		<sequential>
+			<echo message="uploading to ${remote-@{env}.user}@${remote-@{env}.hostname}:httpdocs/@{todir}" />
+
+			<scp todir="${remote-@{env}.user}:${remote-@{env}.password}@${remote-@{env}.hostname}:httpdocs/@{todir}" verbose="@{verbose}">
+				<fileset dir="@{dir}">
+					<include name="@{include}" />
+					<exclude name="@{exclude}" />
+				</fileset>
+			</scp>
+			
+		</sequential>	  	
+	</macrodef>
+	
+</project>
